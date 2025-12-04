@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+
+# This `uv` wrapper blocks the incorrect usage of `uv add --dev` and
+# redirects to the standard `uv add --optional dev`. It also manages
+# TTY output and extends the `uv` help message. It determines the
+# project name dynamically via the PROJECT_NAME env var.
+
+if [ -t 1 ] || [ -t 2 ]; then
+    COLOR_RESET='\033[0m'
+    COLOR_CYAN='\033[36m'
+    COLOR_RED='\033[31m'
+    # export FORCE_COLOR=1
+else
+    COLOR_RESET=
+    COLOR_CYAN=
+    COLOR_RED=
+    # export FORCE_COLOR=0
+fi
+
+PROJECT_NAME_DISPLAY="${PROJECT_NAME:-(<PROJECT_NAME>)}"
+
+
+help() {
+    echo ""
+    echo "--- Project Specific Help ${PROJECT_NAME_DISPLAY} ---"
+    echo -e "POLICY NOTE: We use \`${COLOR_CYAN}uv add --optional dev${COLOR_RESET}\` for dev dependencies."
+    echo -e "The command \`${COLOR_RED}uv add --dev${COLOR_RESET}\` is blocked to ensure compatibility with vanilla \`pip install .[dev]\`."
+}
+
+
+if [[ "$1" == "add" && "$2" == "--dev" ]]; then
+    echo -e "${COLOR_RED}POLICY VIOLATION: Incorrect command syntax for this project.${COLOR_RESET}" >&2
+    echo -e "Please use \`${COLOR_CYAN}uv add --optional dev${COLOR_RESET}\` to align with the project's packaging standards (PEP 621)." >&2
+    echo "Rationale: Enforce PEP 621 compliance for dev dependencies." >&2
+    exit 2
+fi
+
+# NOTE: Temporarily adjust PATH to bypass this wrapper script itself.
+# We find the system 'uv' by executing 'command -v uv' with the local 'bin' path removed from PATH.
+PATH="$(echo "${PATH}" | sed -E "s|${PWD}/bin(:?)||")"
+
+if ! command -v uv >/dev/null; then
+    echo "CRITICAL ERROR: Real 'uv' executable not found in PATH." >&2
+    echo "Ensure 'uv' is installed and accessible in the system environment." >&2
+    exit 1
+fi
+
+if [[ "$#" -eq 0 || "$1" == "--help" || "$1" == "-h" ]]; then
+    command uv "$@"
+    help
+    exit 0
+fi
+
+exec uv "$@"
